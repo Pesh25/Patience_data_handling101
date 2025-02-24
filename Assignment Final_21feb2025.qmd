@@ -1,0 +1,476 @@
+---
+title: "Assignment Final"
+author: "Patience Chungu"
+format:
+  revealjs:
+    incremental: true  
+    theme: moon
+editor: visual
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Data: Birds observed at feeding stations in USA
+
+Data Sets: PFW_count_site_data_public_2021 (Site description data) and PFW_2021_public (Observation data)
+
+Data Wrangling activities done using Tidyverse packages such as Dplyr and tidyr
+
+```{r}
+1 + 1
+```
+
+```{r}
+library(tidyverse)
+```
+
+## Call data sets
+
+```{r}
+Dataset_1 <- read.csv("PFW_2021_Public.csv")
+```
+
+```{r}
+Dataset_2 <- read.csv("PFW_count_site_data_public_2021.csv")
+```
+
+## Check the structure of data sets
+
+```{r}
+str(Dataset_1)
+```
+
+```{r}
+str(Dataset_2)
+```
+
+## Description of data sets
+
+Looks like both are long data sets
+
+Entered by many data sources with varying levels of credibility hence high chances of error or bias
+
+However, the data set has validation data which if done thoroughly has potential to reduce error
+
+## Data manipulations
+
+Pivot Wider data with selected columns Check vaiables names to select for analysis
+
+```{r}
+names(Dataset_1)
+```
+
+## Run pivot wider for Dataset1 but only For loc_id,obs_id and how_many
+
+```{r}
+wider_Data_1 <- Dataset_1 %>%
+select(loc_id,obs_id, how_many) %>%
+  pivot_wider(names_from = loc_id,
+              values_from = how_many)
+```
+
+An overview of the created wider data set
+
+```{r}
+head(wider_Data_1)
+```
+
+Not very useful- a lot of empty cells!
+
+## Data wrangling continued- Selecting a few variables(loc_id, subnational1_code, obs_id, Month, Year, species_code, how_many) to work with from Dataset1 and call it Subset_1
+
+```{r}
+Subset_1 <- Dataset_1 %>%
+  select(loc_id, subnational1_code, obs_id, Month, Year, species_code, how_many)
+```
+
+Combined subnational codes of Subset_1 by prefixes
+
+```{r}
+combined_natnlcodes2 <- Subset_1 %>%
+  mutate(prefix = str_extract(subnational1_code, "^[A-Z]{2}")) %>%
+  group_by(prefix)
+```
+
+Rename some variables
+
+```{r}
+combined_natnlcodes2 <- combined_natnlcodes2 %>% rename(Country = prefix, Counts = how_many)
+```
+
+# Visualisations, Draw 3/4 Graphs and a combination plot
+
+Data set too big for distinct figures- Filter for analysis (Subset_2)
+
+```{r}
+Subset_2 <- combined_natnlcodes2 %>% 
+ select(loc_id, Country, obs_id, Month, Year, species_code, Counts) %>% 
+  filter(Counts >50)
+```
+
+## Create a violin plot (plot1)
+
+```{r}
+plot1 <- ggplot(Subset_2, aes(x = Year, y = Counts, color = Country)) +
+  geom_violin(aes(fill = Country)) +
+  labs(title = "Bird counts >greater than 50 (2020 &2021)",
+       x = "Year",
+       y = "Bird Counts",
+       fill = "Country") +
+  theme_minimal()
+print(plot1)
+```
+
+## Create a figure showing the proportion representation of top species per country of sighting counts
+
+Filter out the N/A from the country data
+
+```{r}
+combined_natnlcodes2 <- combined_natnlcodes2 %>% filter(!is.na(Country))
+```
+
+Then aggregate the data
+
+```{r}
+ agg_data <- combined_natnlcodes2 %>%
+  group_by(Country, species_code) %>%
+  summarise(total_counts = sum(Counts)) %>%
+  ungroup()
+```
+
+## Calculate proportion of each species for each country
+
+```{r}
+proptn1 <- agg_data %>%
+  group_by(Country) %>%
+  mutate(proportion = total_counts / sum(total_counts)) %>%
+  ungroup()
+```
+
+Now filter out the highest proportion- top species per country + rename the species
+
+```{r}
+Top_species <- proptn1 %>%
+  group_by(Country) %>%
+  filter(proportion == max(proportion)) %>%
+  ungroup() %>% 
+   mutate(species_code = case_when(
+    species_code == "amecro" ~ "American Crow",
+    species_code == "amegfi" ~ "American Goldfinch",
+    species_code == "comred" ~ "Common Redpoll",
+    species_code == "daejun" ~ "Dark-eyed Junco",
+    TRUE ~ species_code
+  ))
+```
+
+## Convert proportions to percentage (preference)
+
+```{r}
+Top_species <- Top_species %>%
+  mutate(percentage = proportion* 100)
+```
+
+Now plot the graph with colorblind consideration
+
+```{r}
+plot2 <- ggplot(Top_species, aes(x = Country, y = percentage, fill = species_code)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Most Sighted Species per Country",
+       x = "Country",
+       y = "Percentage %",
+       fill = "Species") + 
+  scale_fill_viridis_d(option = "plasma") +
+  theme_minimal()
+print(plot2)
+```
+
+\*Country PM: Palau- Western Pacific Ocean
+
+## Scatter plot
+
+```{r}
+plot3 <- ggplot(
+  data = combined_natnlcodes2,
+  mapping = aes(x = Month, y = Counts)
+) +
+  geom_point(aes(color = factor(Year))) +
+  scale_x_continuous(breaks = seq(min(combined_natnlcodes2$Month), max(combined_natnlcodes2$Month), by = 1)) +
+  labs(
+    title = "Bird counts by month",
+    x = "Month",
+    y = "Bird Counts",
+    color = "Year of observation"
+  ) +
+  theme_minimal()
+print(plot3)
+```
+
+# Change months to seasons in America
+
+```{r}
+combined_natnlcodes2S <- combined_natnlcodes2 %>%
+  mutate(Season = case_when(
+    Month %in% c(12, 1, 2) ~ "Winter",
+    Month %in% c(3, 4, 5) ~ "Spring",
+    Month %in% c(6, 7, 8) ~ "Summer",
+    Month %in% c(9, 10, 11) ~ "Fall"
+  ))
+```
+
+Plot the new figure
+
+```{r}
+plot3b <- ggplot(
+  data = combined_natnlcodes2S,
+  mapping = aes(x = Season, y = Counts)
+) +
+  geom_point(aes(color = factor(Year))) +
+  scale_x_discrete(limits = c("Winter", "Spring", "Summer", "Fall")) +
+  labs(title = "Bird counts by Season", x = "Season", y = "Counts", color = "Year of observation") +
+  theme_minimal()
+print(plot3b)
+```
+
+## Missing package-Install cowplot
+
+```{r}
+#install.packages("cowplot")
+library(cowplot)
+```
+
+## Arrange the two related plots in one figure
+
+```{r}
+plot3F <- plot_grid(plot3, plot3b, ncol = 2, rel_widths = c(2.0, 2.5))
+print(plot3F)
+```
+
+```{r}
+ Dataset_2NA<- Dataset_2 %>% filter(!is.na(nearby_feeders))
+```
+
+```{r}
+summary(Dataset_2NA)
+```
+
+Remove all non finite entries
+
+```{r}
+Dataset_2NAF <- Dataset_2NA %>%
+  filter(is.finite(population_atleast) & is.finite(nearby_feeders))
+```
+
+Wrap the title
+
+```{r}
+wrapped_title <- str_wrap("Population range & presence/absence of nearby feeders", width = 30)
+```
+
+```{r}
+plot4 <- ggplot(
+  data = Dataset_2NAF,
+  aes(x = factor(nearby_feeders), y = population_atleast, fill = factor(nearby_feeders))
+) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("0" = "green", "1" = "purple"), labels = c("0" = "Absence", "1" = "Presence")) +
+  labs(
+    title = wrapped_title,
+    x = "Nearby Feeders", 
+    y = "Population Range",
+    fill = "Nearby feeders"
+  ) +
+  theme_minimal()
+
+print(plot4)
+```
+
+## Combine the plots
+
+```{r}
+Combined_plot <- plot_grid(
+  plot1, NULL, plot2,
+  NULL, NULL, NULL,
+  plot4, NULL, plot3,
+  plot3b,
+  ncol = 3, nrow = 4,
+  rel_widths = c(2, 0.1, 2),
+  rel_heights = c(1, 0.1, 1),
+  labels = c("A", "", "B", "", "", "", "C", "", "D", "E")
+)
+
+print(Combined_plot)
+```
+
+## Creating a map in R
+
+```{r}
+library (sf)
+```
+
+```{r}
+Dataset_1 <- read.csv("PFW_2021_Public.csv")
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+library(sf)
+library("ggspatial")
+```
+
+## merge nat codes by prefix
+
+```{r}
+merge_natnlcodes <- Dataset_1 %>%
+  mutate(prefix = str_extract(subnational1_code, "^[A-Z]{2}")) %>%
+  group_by(prefix)
+```
+
+rename some columns
+
+```{r}
+merge_natnlcodes2 <- merge_natnlcodes %>% rename(Country = prefix, Counts = how_many)
+```
+
+Remove missing values of coordinates
+
+```{r}
+merge_natnlcodes2 <- merge_natnlcodes2[!is.na(merge_natnlcodes2$latitude) & !is.na(merge_natnlcodes2$longitude), ]
+```
+
+Convert to sf object
+
+```{r}
+sf_mapdata<- st_as_sf(merge_natnlcodes2, coords = c("longitude", "latitude"), crs = 4326)
+```
+
+## Draw the map
+
+and add North arrow, scale and grid lines
+
+```{r}
+ggplot(data = sf_mapdata) +
+geom_sf(aes(geometry = geometry, color = Counts), size = 2) +
+  scale_color_viridis_c(option = "plasma", name = "Number of Sightings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_blank(),
+    axis.text = element_text(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey80"),
+    panel.grid.minor = element_line(color = "grey90") 
+  ) +
+  labs(title = "Bird Species Sightings", color = "Sightings") +
+  annotation_north_arrow(location = "tr", which_north = "true", 
+                         style = north_arrow_nautical()) +
+  annotation_scale(location = "bl", width_hint = 0.30) +
+  coord_sf()
+```
+
+##Trying alternative packages for additional layering
+
+Load and install Other packages
+
+```{r}
+library(rnaturalearth)
+library(ggthemes)
+```
+
+Remove country XX with location in the sea etc
+
+```{r}
+sf_mapdata2 <- sf_mapdata %>%
+  filter(Country != "XX")
+```
+
+```{r}
+WorldM <- ne_countries(scale = "medium", returnclass = "sf" )
+```
+
+## Recreate map to add Country boarders
+
+with color deficiency consideration
+
+```{r}
+sf_mapdata2 %>%
+  ggplot() +
+  geom_sf(data = WorldM, fill = NA, color = "black") +
+  geom_sf(aes(geometry = geometry, color = Counts), size = 3) +
+  scale_color_viridis_c(option = "cividis", name = "Number of Sightings") +
+  labs(title = "Birds watched at sighting stations") +
+  ggthemes::theme_map() +
+  theme(
+    legend.position = "right",
+    axis.title = element_blank(),
+    axis.text = element_text(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey80"), 
+    panel.grid.minor = element_line(color = "grey90"),
+    legend.title = element_text(face = "bold"),
+    plot.title = element_text(size = 20, hjust = 0.5, face = "bold", color = "blue")
+  )
+```
+
+## Add background colour around countries for "ocean effect"
+
+and shapes to denote countries
+
+```{r}
+sf_mapdata2 %>% 
+  ggplot() +
+  geom_sf(data = WorldM, fill = "lightgray", color = NA) +
+  geom_sf(data = WorldM, fill = NA, color = "black") +
+  geom_sf(aes(geometry = geometry, color = Counts, shape = Country), size = 3) +
+  scale_color_viridis_c(option = "plasma", name = "Number of Sightings") +
+  scale_shape_manual(values = c(16, 17, 18, 19)) +  # Assign different shapes to countries
+  labs(title = "Birds watched at sighting stations") +
+  ggthemes::theme_map()+
+  theme(
+    legend.position = "right",
+    axis.title = element_blank(),
+    axis.text = element_text(color = "black"),
+    legend.title = element_text(face = "bold"),
+    plot.title = element_text(size = 20, hjust = 0.5, face = "bold", color = "blue"),
+    panel.background = element_rect(fill = "lightblue")  # Add background color to the panel
+  )
+```
+
+## Zooming In
+
+```{r}
+theme_map <- theme_minimal()
+sf_mapdata2 %>% 
+  ggplot(aes(color = Counts)) +
+  geom_sf(aes(geometry = geometry, color = Counts, shape = Country), size = 3) +
+  scale_color_viridis_c(option = "plasma", name = "Number of Sightings") +
+  labs(title = "Birds watched at sighting stations") +
+  theme_map +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold"),
+    plot.title = element_text(size = 20, hjust = 0.5, face = "bold", color = "blue"),
+    axis.title = element_blank(),
+    axis.text = element_text(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey80"),
+    panel.grid.minor = element_line(color = "grey90")
+  ) +
+  annotation_north_arrow(location = "tr", which_north = "true", 
+                         style = north_arrow_nautical()) +
+  annotation_scale(location = "bl", width_hint = 0.40)
+```
+
+## Challenges
+
+Unknown data set- Had to understand it, learn its genesis, study the meta data before i could clean and synthesize the data The many filters and data groups i created got me a little confused and lost with which data I was supposed to be working with Course facilitators and lecturers helped sort the saving and rendering challenges that plagued my initial work- All is good now
+
+## Lessons learnt and future prospects
+
+Moved from being an R, Quarto novice to all i know now...learnt so much!! from practically not having an idea what a pipe was to being able to do relatively complex illustrations in R or at least understanding the process to them Also learnt lots of problem solving techniques that i will find extremely useful in future. Also the constant restarts i did due to failure to save initially gave me an opportunity to keep practicing and provided an additional learning platform. I need more practice with QGIS and map generation in general
